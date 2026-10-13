@@ -1235,7 +1235,7 @@ footer{text-align:center;padding:18px;color:var(--g400);font-size:.69rem;border-
         <div class="tab-panel active" id="tab0">
           <div class="sc-intro ruby">
             <div class="sc-tag">Option 1 · Default (No additional investment)</div>
-            <div class="sc-title">See how long your retirement nest egg can sustain your desired lifestyle without additional investments.</div>
+            <div class="sc-title">See how long your retirement nest egg can last.</div>
             <div class="sc-desc" id="scDefaultDesc"></div>
             <div class="sc-stats" id="scDefaultStats"></div>
           </div>
@@ -3316,7 +3316,12 @@ function switchRTab(idx,btn){
   document.querySelectorAll('.rtab-panel').forEach((p,i)=>p.classList.toggle('active',i===idx));
   // Reached from the "Proceed" button at the foot of a tab, the reader is at the bottom
   // of the page — bring them back to the top of the tab they just opened.
-  if(!btn){const t=document.querySelector('.result-tabs');if(t)t.scrollIntoView({behavior:'smooth',block:'start'});}
+  if(!btn){
+    // Opened from a "Proceed" button: land on the Target Nest Egg box (falls back to the tabs if it is hidden).
+    const tne=document.getElementById('tneBox');
+    const t=(tne&&tne.offsetParent!==null)?tne:document.querySelector('.result-tabs');
+    if(t)window.scrollTo({top:Math.max(0,t.getBoundingClientRect().top+window.scrollY-16),behavior:'smooth'});
+  }
   // Canvases measure 0 wide while their tab is hidden, so a chart drawn then comes out
   // at the fallback width. Redraw once the panel is actually on screen.
   if(lastR&&lastE) requestAnimationFrame(()=>renderCharts(lastR,lastE));
