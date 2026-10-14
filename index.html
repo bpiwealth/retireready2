@@ -494,6 +494,7 @@ footer{text-align:center;padding:18px;color:var(--g400);font-size:.69rem;border-
 .cmt-grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-top:9px}
 .cmt-f label{display:block;font-size:.66rem;font-weight:700;color:var(--g600);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px}
 .cmt-f .hint{margin-top:2px}
+.cmt-f .hint.cmt-capped{color:var(--ruby);font-style:normal;font-weight:600}
 .cmt-when{margin-top:9px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
 .cmt-when .cmt-when-lbl{font-size:.7rem;font-weight:700;color:var(--g600);text-transform:uppercase;letter-spacing:.04em}
 .cmt-when .seg button{padding:5px 13px;font-size:.7rem}
@@ -602,6 +603,11 @@ footer{text-align:center;padding:18px;color:var(--g400);font-size:.69rem;border-
 .adj-box .cmt-row.editing{max-width:720px}
 .adj-sec.narrow{max-width:560px}
 @media(max-width:560px){.adj-box .cmt-grid-3{grid-template-columns:1fr 1fr}}
+
+/* Retirement Life shows only the rows that reach retirement (same list, one set of data) */
+.adj-sec-ret-cmt{margin-top:20px}
+#cmtSlotRet .cmt-row.cmt-pre-only:not(.editing){display:none}
+.adj-note-empty{font-size:.74rem;color:var(--g400);font-style:italic;padding:8px 0;display:none}
 
 /* ── TWO-HANDLE SPLIT SLIDER ── */
 .split{position:relative;height:34px;margin:10px 11px 4px;touch-action:none;cursor:pointer}
@@ -915,8 +921,8 @@ footer{text-align:center;padding:18px;color:var(--g400);font-size:.69rem;border-
           <label class="q-lbl">Are there larger expenses that do not fall every month?</label>
           <div class="hint" style="font-style:normal;color:var(--g600);font-size:.73rem;line-height:1.5">
             Tuition for the next few years, a yearly trip, an outstanding amortization you are still paying down,
-            a car you plan to replace. Add one row for each. <b>For how long</b> sets how many years it runs;
-            everything here is assumed to stop by the time you retire.
+            a car you plan to replace. Add one row for each. <b>For how long</b> sets how many years it runs.
+            Any years that fall after you retire are paid from your retirement capital; leave it blank and it runs through your whole retirement.
           </div>
         </div>
         <div id="cmtHome"><div id="cmtBlock">
@@ -1210,8 +1216,11 @@ footer{text-align:center;padding:18px;color:var(--g400);font-size:.69rem;border-
             <div class="nest-line"><span class="nl-lbl">Add: Expected Retirement Pay</span><span class="nl-val" id="neCash"></span></div>
             <div class="nest-line"><span class="nl-lbl">Less: Outstanding liabilities</span><span class="nl-val" id="neLiab"></span></div>
             <div class="nest-line"><span class="nl-lbl">Less: Planned big purchase</span><span class="nl-val" id="neGift"></span></div>
-            <div class="nest-line" id="neCmtLine" style="display:none"><span class="nl-lbl">Set aside for commitments during retirement<span class="nl-sub" id="neCmtSub"></span></span><span class="nl-val" id="neCmt"></span></div>
             <div class="nest-line tot"><span class="nl-lbl">Net Retirement Capital</span><span class="nl-val" id="neCapital"></span></div>
+            <div id="neCmtLine" style="display:none">
+              <div class="nest-line" style="margin-top:6px"><span class="nl-lbl">Less: Other expenses during retirement<span class="nl-sub" id="neCmtSub"></span></span><span class="nl-val" id="neCmt"></span></div>
+              <div class="nest-line tot"><span class="nl-lbl">Capital for your monthly budget</span><span class="nl-val" id="neForLiving"></span></div>
+            </div>
           </div>
           <div class="nest-col">
             <h4>Retirement Income Sources</h4>
@@ -1331,6 +1340,13 @@ footer{text-align:center;padding:18px;color:var(--g400);font-size:.69rem;border-
               <div class="adj-row"><span class="adj-rl"><span class="adj-dot"></span><span>Years in retirement</span></span><span class="adj-in"><input type="number" id="p_retirementPeriod" class="nopre" min="1" max="50"><span class=as>yrs</span></span></div>
               <div class="adj-row"><span class="adj-rl"><span class="adj-dot"></span><span>Return on retirement fund</span></span><span class="adj-in"><input type="number" id="p_netReturnPA" class="nopre" min="0" max="30" step="0.01"><span class=as>%</span></span></div>
             </div>
+          </div>
+          <div class="adj-sec adj-sec-ret-cmt">
+            <div class="adj-sec-hd adj-subhd-x" id="p_cmtHdRet"><span class="adj-dot"></span>Other expenses during retirement</div>
+            <div id="cmtSlotRet"></div>
+            <div class="adj-note-empty" id="p_cmtRetEmpty">None of your other expenses run into retirement.</div>
+            <div class="adj-foot"><button type="button" class="adj-add" onclick="addCommitmentRet()">＋ Add expense</button><span class="adj-tot" id="p_cmtTotRet"></span></div>
+            <div class="adj-hint" id="p_cmtRetHidden"></div>
           </div>
         </div>
       </div>
@@ -1658,14 +1674,15 @@ function horizon(){
    Each row escalates from TODAY, so a ₱250,000 tuition bill that first falls in six
    years has already inflated for five of them by the time it arrives.
 
-   `continues` decides whether the part of the row that falls inside retirement is added
-   to the retirement budget in Tab 2, or whether the row only reduces pre-retirement
-   capital in Tab 1.
+   The years of a row that fall before retirement reduce cash flow in Retirement
+   Preparation; the years that fall inside retirement are funded from retirement capital
+   in Retirement Life. "Starts in N years" means age now + N.
    ══════════════════════════════════════════════════════════════ */
 
 /* Category presets: default escalation, default frequency, default "continues" answer.
    rate:null means "use the client's general inflation assumption". */
-/* Every row stops at retirement — how long it runs is set by "For how long". */
+/* No row is cut off at retirement — how long it runs is set by "For how long" alone.
+   Any part that falls inside retirement is funded from retirement capital in Retirement Life. */
 const CMT_CATEGORIES = [
   {v:'tuition',   label:'Tuition / education',            rate:8,    freq:'1',  hint:'Philippine tuition has run well above headline inflation — 8% p.a. is a common planning assumption.'},
   {v:'amort',     label:'Outstanding amortization',        rate:0,    freq:'12', hint:'A loan you are still paying down. Fixed amortizations do not escalate — left at 0%.'},
@@ -1705,11 +1722,11 @@ function addCommitment(preset){
     <div class="cmt-grid-3">
       <div class="cmt-f"><label>Starts in</label>
         <div class="fi"><input type="number" class="pr cmt-start" value="0" min="0" max="60" step="1"><span class="suf" style="font-size:.6rem">yrs</span></div>
-        <div class="hint">0 = this year</div>
+        <div class="hint cmt-start-hint">0 = this year</div>
       </div>
       <div class="cmt-f"><label>For how long</label>
         <div class="fi"><input type="number" class="pr cmt-years" placeholder="ongoing" min="1" max="60" step="1"><span class="suf" style="font-size:.6rem">yrs</span></div>
-        <div class="hint">blank = ongoing</div>
+        <div class="hint cmt-years-hint">blank = ongoing</div>
       </div>
       <div class="cmt-f"><label>Increases p.a.</label>
         <div class="fi"><input type="number" class="pr cmt-rate" min="0" max="30" step="0.01"><span class="suf">%</span></div>
@@ -1724,7 +1741,8 @@ function addCommitment(preset){
   amt.addEventListener('input',()=>{handleCurrencyInput(amt);render();});
   amt.addEventListener('paste',()=>setTimeout(()=>{handleCurrencyInput(amt);render();},0));
   row.querySelectorAll('.cmt-freq,.cmt-start,.cmt-years,.cmt-rate').forEach(el=>{
-    el.addEventListener('input',render); el.addEventListener('change',render);
+    el.addEventListener('input',render);
+    el.addEventListener('change',()=>{ capCmtField(row,el); render(); });
   });
   const cat=row.querySelector('.cmt-cat');
   cat.addEventListener('change',()=>{applyCmtCategory(row,true);render();});
@@ -1769,7 +1787,30 @@ function removeCommitment(btn){
 }
 
 /* Read every row into a plain array. A one-time row is forced to a single year. */
+/* Keep every row inside the plan: nothing may start after, or run past, the last year of
+   retirement (retirement age + years in retirement − 1). Out-of-range entries are pulled
+   back to the maximum and the row remembers it, so its hint can say so. */
+function cmtLimits(){
+  const H=horizon(), per=Math.max(0,Math.round(gv('retirementPeriod')||0));
+  if(!(gv('ageNow')>0) || !H.valid || per<=0) return null;
+  const retEnd=H.retAge+per-1;
+  return {retEnd, maxStart:Math.max(0,retEnd-H.ageNow), ageNow:H.ageNow};
+}
+/* Rewrite a row's own field to its capped value once the advisor finishes editing it.
+   Calculations never wait for this: readCommitments() always applies the cap. */
+function capCmtField(row,el){
+  const L=cmtLimits(); if(!L) return;
+  const st=row.querySelector('.cmt-start');
+  if(el.classList.contains('cmt-start')){
+    const v=parseFloat(st.value); if(!isNaN(v)&&Math.round(v)>L.maxStart) st.value=String(L.maxStart);
+  }
+  const yr=row.querySelector('.cmt-years');
+  const maxYrs=Math.max(1,L.retEnd-(L.ageNow+Math.min(L.maxStart,Math.max(0,Math.round(parseFloat(st.value)||0))))+1);
+  const yv=parseFloat(yr.value);
+  if(!yr.disabled && !isNaN(yv) && Math.round(yv)>maxYrs) yr.value=String(maxYrs);
+}
 function readCommitments(){
+  const L=cmtLimits();
   const out=[];
   document.querySelectorAll('#cmtList .cmt-row').forEach((row,i)=>{
     const num=(v)=>{const n=parseFloat(String(v).replace(/,/g,''));return isNaN(n)?0:n;};
@@ -1779,18 +1820,46 @@ function readCommitments(){
     const freqK  = row.querySelector('.cmt-freq').value;
     const per    = (CMT_FREQ[freqK]||CMT_FREQ['1']).per;
     const oneTime= freqK==='0';
-    const start  = Math.max(0,Math.round(num(row.querySelector('.cmt-start').value)));
+    const startRaw = Math.max(0,Math.round(num(row.querySelector('.cmt-start').value)));
+    const start    = L ? Math.min(startRaw,L.maxStart) : startRaw;
     const yearsRaw = row.querySelector('.cmt-years').value;
     const ongoing  = !oneTime && (yearsRaw===''||yearsRaw==null||num(yearsRaw)<=0);
-    const years    = oneTime ? 1 : (ongoing ? Infinity : Math.max(1,Math.round(num(yearsRaw))));
+    const yearsIn  = oneTime ? 1 : (ongoing ? Infinity : Math.max(1,Math.round(num(yearsRaw))));
+    // Nothing may start after, or run past, the last year of retirement.
+    const maxYrs   = L ? Math.max(1,L.retEnd-(L.ageNow+start)+1) : Infinity;
+    const years    = (oneTime||ongoing) ? yearsIn : Math.min(yearsIn,maxYrs);
+    const capStart = startRaw>start, capYears = !oneTime && !ongoing && yearsIn>years;
+    const st=row.querySelector('.cmt-start'), yf=row.querySelector('.cmt-years');
+    if(L){ st.max=String(L.maxStart); yf.max=String(maxYrs); } else { st.removeAttribute('max'); yf.removeAttribute('max'); }
     const rate   = num(row.querySelector('.cmt-rate').value)/100;
-    const cont   = false;   // every other expense stops at retirement
-    const from   = start<=0 ? 1 : start;                 // first year it falls, counted from now
+    const cont   = true;    // no retirement gate — "For how long" alone decides when a row ends
+    const from   = start+1;                               // year index it first falls (t=1 is this year), so "in N years" = age now + N
     const to     = years===Infinity ? Infinity : from+years-1;
-    out.push({idx:i+1,row,catV,label:cat.label,amount,freqK,per,oneTime,ongoing,start,years,rate,cont,from,to,
+    out.push({idx:i+1,row,catV,label:cat.label,amount,freqK,per,oneTime,ongoing,start,years,rate,cont,from,to,capStart,capYears,
               annual:amount*per});
   });
   return out;
+}
+
+/* Nominal cost of one row inside the retirement period. */
+function cmtTotalSpan(cm,c){let s=0;for(let k=1;k<=c.period;k++)s+=cmtCostAt(cm,c.yearsToRet+k);return s;}
+
+/* Ages a row covers. Year index t falls at age (age now + t − 1). retEnd is the last
+   age of the retirement period (retirement age + years in retirement − 1). */
+function cmtAges(c,H){
+  if(!(gv('ageNow')>0)) return null;
+  const a0=H.ageNow;
+  const per=Math.max(0,Math.round(gv('retirementPeriod')||0));
+  return {start:a0+c.from-1, end:c.to===Infinity?Infinity:a0+c.to-1,
+          retEnd:(H.valid&&per>0)?H.retAge+per-1:null};
+}
+/* Nominal totals before retirement (years 1..x) and during retirement (years x+1..x+period). */
+function cmtSplitTotals(list,H){
+  const per=Math.max(0,Math.round(gv('retirementPeriod')||0));
+  let pre=0, ret=0;
+  for(let t=1;t<=Math.min(H.x,70);t++) pre+=cmtTotalAt(list,t,'pre');
+  if(H.valid) for(let k=1;k<=Math.min(per,70);k++) ret+=cmtTotalAt(list,H.x+k,'ret');
+  return {pre,ret};
 }
 
 /* Cost of one commitment in year `t`, counted from today (t=1 is this year). */
@@ -1800,7 +1869,7 @@ function cmtCostAt(c,t){
 }
 /* Total commitment cost in year `t`. `phase` filters which rows count:
    'pre' = every row (all of them reduce capital before retirement)
-   'ret' = only rows the advisor marked as continuing into retirement */
+   'ret' = rows that run into retirement (every row now; kept for clarity) */
 function cmtTotalAt(list,t,phase){
   let sum=0;
   for(const c of list){ if(phase==='ret' && !c.cont) continue; sum+=cmtCostAt(c,t); }
@@ -2476,14 +2545,33 @@ function syncCommitmentsUI(){
     if(yearsField)yearsField.disabled = row.querySelector('.cmt-freq').value==='0';
 
     const c=list[i]; const sum=row.querySelector('.cmt-sum'); if(!c||!sum)return;
+    const A=cmtAges(c,H);
+    // Rows whose last year falls before the retirement age stay on Retirement Preparation only.
+    row.classList.toggle('cmt-pre-only', H.valid && c.to<=H.x);
+    const sh=row.querySelector('.cmt-start-hint'), yh=row.querySelector('.cmt-years-hint');
+    const L=cmtLimits();
+    if(sh){
+      sh.textContent = A ? (c.oneTime?`at age ${A.start}`:`from age ${A.start}`) : '0 = this year';
+      if(L && c.capStart) sh.textContent += ` · capped at ${L.maxStart} yr${L.maxStart===1?'':'s'}`;
+      sh.classList.toggle('cmt-capped',!!(L && c.capStart));
+    }
+    if(yh){
+      const maxYrs = L ? Math.max(1,L.retEnd-A.start+1) : null;
+      yh.textContent = !A ? (c.oneTime?'one-time':'blank = ongoing')
+        : c.oneTime ? 'one-time'
+        : c.ongoing ? (A.retEnd!=null ? `through age ${A.retEnd} (end of retirement)` : 'ongoing')
+        : `until age ${A.end}` + (L ? (c.capYears ? ` · capped at ${maxYrs} yr${maxYrs===1?'':'s'}` : ` · max ${maxYrs} yr${maxYrs===1?'':'s'}`) : '');
+      yh.classList.toggle('cmt-capped',!!(L && c.capYears && !c.oneTime && !c.ongoing));
+    }
     const ml=row.querySelector('.cmt-mini-l'), md=row.querySelector('.cmt-mini-d');
     if(ml)ml.textContent=c.label;
     if(md){
       if(c.annual<=0){ md.textContent='No amount yet'; }
       else {
-        const per={'0':'','12':'/mo','4':'/qtr','2':' semi-annually','1':'/yr'}[c.freqK]||'/yr';
-        const when=c.oneTime ? (c.start<=0?'this year':`in ${c.start} yr${c.start>1?'s':''}`)
-                             : `${c.start<=0?'from now':'from yr '+c.start}${c.ongoing?', ongoing':`, ${c.years} yr${c.years>1?'s':''}`}`;
+        const PER={'0':'','12':'/mo','4':'/qtr','2':' semi-annually','1':'/yr'}; const per=c.freqK in PER?PER[c.freqK]:'/yr';
+        const when=A ? (c.oneTime ? `at age ${A.start}` : (c.ongoing ? `from age ${A.start}, ongoing` : (A.end>A.start?`age ${A.start}–${A.end}`:`at age ${A.start}`)))
+                     : c.oneTime ? (c.start<=0?'this year':`in ${c.start} yr${c.start>1?'s':''}`)
+                                 : `${c.start<=0?'from now':'from yr '+c.start}${c.ongoing?', ongoing':`, ${c.years} yr${c.years>1?'s':''}`}`;
         const rt=+(c.rate*100).toFixed(2);
         md.textContent=`₱${abbr(c.amount)}${per} · ${when}${rt>0?` · +${rt}%`:''}`;
       }
@@ -2493,13 +2581,12 @@ function syncCommitmentsUI(){
       ? (c.start<=0?'this year':`in ${c.start} year${c.start>1?'s':''}`)
       : (c.start<=0?'starting this year':`starting in ${c.start} year${c.start>1?'s':''}`);
     const howLong = c.oneTime ? '' : (c.ongoing ? ', ongoing' : `, for ${c.years} year${c.years>1?'s':''}`);
-    // What it costs in the first year it actually falls, and in total before retirement.
+    // What it costs in the first year it actually falls, and in total before / during retirement.
     const firstCost = cmtCostAt(c, c.from);
-    let nominal=0;
-    for(let t=1;t<=Math.min(H.x,70);t++) nominal+=cmtCostAt(c,t);
+    const T=cmtSplitTotals([c],H);
     sum.innerHTML=`<b>${fP(c.annual)}</b> ${c.oneTime?'':'a year '}${when}${howLong}, rising ${fmt(c.rate*100,2).replace(/\.?0+$/,'')}% a year`+
       (c.from>1?` — <b>${fP(firstCost)}</b> by the time it first falls`:'')+
-      (H.x>0?`. Total before retirement: <b>${fP(nominal)}</b>.`:'.');
+      (H.x>0?`. Total before retirement: <b>${fP(T.pre)}</b>${T.ret>0?` · during retirement: <b>${fP(T.ret)}</b>`:''}.`:'.');
   });
 
   const empty=document.getElementById('cmtEmpty');
@@ -2815,9 +2902,11 @@ function renderScenarios(c){
   if(neCmtLine){
     neCmtLine.style.display = c.hasRetCommit ? '' : 'none';
     if(c.hasRetCommit){
-      document.getElementById('neCmt').textContent=fP(c.pvRetCommit);
+      document.getElementById('neCmt').textContent='('+fP(c.pvRetCommit)+')';
       document.getElementById('neCmtSub').textContent=
-        `present value at ${fmt(c.r*100,2)}% of ${fP(c.nominalRetCommit)} payable over your retirement — funded off the top, memo only`;
+        `${c.retCommitments.filter(cm=>cm.annual>0&&cmtTotalSpan(cm,c)>0).map(cm=>cm.label).join(', ')} — ${fP(c.nominalRetCommit)} over your ${c.period}-year retirement, at present value (${fmt(c.r*100,2)}%)`;
+      const fl=c.retirementCapital-c.pvRetCommit;
+      document.getElementById('neForLiving').innerHTML=fl>=0?fP(fl):'<span style="color:var(--ruby)">('+fP(Math.abs(fl))+')</span>';
     }
   }
   document.getElementById('neCapital').textContent=fP(c.retirementCapital);
@@ -2837,12 +2926,12 @@ function renderScenarios(c){
   document.getElementById('gapBox').innerHTML=`
     <div class="gap-row"><span class="gr-lbl">Estimated annual expense<span class="gr-sub">monthly expense at retirement age × 12</span></span><span class="gr-val">(${fP(c.targetAnnualExpense)})</span></div>
     <div class="gap-row indent sub-detail"><span class="gr-lbl">Monthly expense at age ${c.startAge}${c.usedOwnExpense?' (your own figure)':''} — ${fP(c.monthlyExpenseTodayUsed)} today, inflated over ${c.yearsToRet} years</span><span class="gr-val">(${fP(c.monthlyExpense)})</span></div>
-    ${c.hasRetCommit?`<div class="gap-row"><span class="gr-lbl">Add: Big &amp; recurring commitments continuing into retirement<span class="gr-sub">${c.retCommitments.filter(cm=>cm.annual>0).map(cm=>cm.label).join(', ')} — ${fP(c.cmtAt(1))} in year 1, ${fP(c.nominalRetCommit)} over the full ${c.period} years</span></span><span class="gr-val">(${fP(c.cmtAt(1))})</span></div>
+    ${c.hasRetCommit?`<div class="gap-row"><span class="gr-lbl">Add: Other expenses during retirement — year 1<span class="gr-sub">${c.retCommitments.filter(cm=>cm.annual>0&&cmtTotalSpan(cm,c)>0).map(cm=>cm.label).join(', ')} — ${fP(c.cmtAt(1))} in year 1${c.cmtAt(1)>0?'':(()=>{for(let k=2;k<=c.period;k++)if(c.cmtAt(k)>0)return ` (first falls at age ${c.startAge+k-1})`;return '';})()}, ${fP(c.nominalRetCommit)} over the full ${c.period} years</span></span><span class="gr-val">(${fP(c.cmtAt(1))})</span></div>
     <div class="gap-row"><span class="gr-lbl">Total year-1 expense</span><span class="gr-val">(${fP(c.targetAnnualExpense+c.cmtAt(1))})</span></div>`:''}
     <div class="gap-row"><span class="gr-lbl">Add: Income sources during retirement</span><span class="gr-val">${fP(c.incomeSources)}</span></div>
     <div class="gap-row indent sub-detail"><span class="gr-lbl">Other Sources of Income During Retirement (annual)</span><span class="gr-val">${fP(c.annualIncome)}</span></div>
     <div class="gap-row tot"><span class="gr-lbl">${net>=0?'Net Income':'Net Expense'} — recurring monthly budget</span><span class="gr-val" style="color:${net>=0?'var(--green)':'var(--ruby)'}">${net>=0?fP(net):'('+fP(Math.abs(net))+')'}</span></div>
-    ${c.hasRetCommit?`<div class="gap-row tot"><span class="gr-lbl">${netY1>=0?'Net Income':'Net Expense'} — year 1, with commitments</span><span class="gr-val" style="color:${netY1>=0?'var(--green)':'var(--ruby)'}">${netY1>=0?fP(netY1):'('+fP(Math.abs(netY1))+')'}</span></div>`:''}`;
+    ${c.hasRetCommit?`<div class="gap-row tot"><span class="gr-lbl">${netY1>=0?'Net Income':'Net Expense'} — year 1, with other expenses</span><span class="gr-val" style="color:${netY1>=0?'var(--green)':'var(--ruby)'}">${netY1>=0?fP(netY1):'('+fP(Math.abs(netY1))+')'}</span></div>`:''}`;
 
   // ── Option 1: Default (Do Nothing) ──
   // Keep desired spending; show how long the nest egg lasts at that full spending.
@@ -3314,6 +3403,7 @@ function updateSlider(c){
 function switchRTab(idx,btn){
   document.querySelectorAll('.rtab-btn').forEach((b,i)=>b.classList.toggle('active',i===idx));
   document.querySelectorAll('.rtab-panel').forEach((p,i)=>p.classList.toggle('active',i===idx));
+  placeCmtBlock(idx);
   // Reached from the "Proceed" button at the foot of a tab, the reader is at the bottom
   // of the page — bring them back to the top of the tab they just opened.
   if(!btn){
@@ -3535,6 +3625,7 @@ function downloadPDF(){
       ${row('Less: Outstanding liabilities', '('+fP(c.liabilities)+')')}
       ${row('Less: Planned big purchase', '('+fP(c.specialAllot)+')')}
       ${row('<b>Net Retirement Capital</b>', '<b>'+neg(c.retirementCapital)+'</b>')}
+      ${c.hasRetCommit?row('Less: Other expenses during retirement <span style="color:#888;font-size:7pt">('+fP(c.nominalRetCommit)+' over '+c.period+' years, at present value)</span>','('+fP(c.pvRetCommit)+')')+row('<b>Capital for your monthly budget</b>','<b>'+neg(c.retirementCapital-c.pvRetCommit)+'</b>'):''}
 
       <div class="pdf-stat-label" style="margin:8pt 0 4pt">Income and Expense Analysis</div>
       ${row('Estimated annual expense', '('+fP(c.targetAnnualExpense)+')')}
@@ -3765,7 +3856,7 @@ function adjReset(ev,scope){
   if(ev)ev.stopPropagation();
   if(!ADJ_BASE)return;
   (ADJ_SCOPE[scope]||[]).forEach(w=>{const el=document.getElementById(w);if(el)el.value=ADJ_BASE.vals[w];});
-  if(scope==='pre'){
+  if(scope==='pre'||scope==='ret'){
     const list=document.getElementById('cmtList');
     if(list){list.innerHTML='';JSON.parse(ADJ_BASE.cmt).forEach(p=>addCommitment(p));}
   }
@@ -3973,19 +4064,29 @@ function syncPanel(){
 
   /* Other expenses: changed marker and total before retirement */
   const cmts=readCommitments().filter(c=>c.annual>0);
-  let tot=0; for(let t=1;t<=Math.min(H.x,70);t++) tot+=cmtTotalAt(cmts,t,'pre');
+  const CT=cmtSplitTotals(cmts,H);
   const cmtChg=!!ADJ_BASE && JSON.stringify(cmtSerialize())!==ADJ_BASE.cmt;
-  chgPre=chgPre||cmtChg;
+  chgPre=chgPre||cmtChg; chgRet=chgRet||cmtChg;
   const ch=document.getElementById('p_cmtHd'); if(ch)ch.classList.toggle('chg',cmtChg);
+  const chR=document.getElementById('p_cmtHdRet'); if(chR)chR.classList.toggle('chg',cmtChg);
+  const retRows=cmts.filter(c=>!(H.valid && c.to<=H.x));
+  const preOnly=cmts.length-retRows.length;
+  const RT=cmtSplitTotals(retRows,H);
+  const ttR=document.getElementById('p_cmtTotRet');
+  if(ttR)ttR.innerHTML = retRows.length ? `<b>${fP(RT.ret)}</b> during retirement${RT.pre>0?` · <b>${fP(RT.pre)}</b> before retirement`:''}` : '';
+  const em=document.getElementById('p_cmtRetEmpty'); if(em)em.style.display = retRows.length||document.querySelector('#cmtSlotRet .cmt-row.editing') ? 'none' : 'block';
+  const hid=document.getElementById('p_cmtRetHidden');
+  if(hid)hid.textContent = preOnly>0 ? `${preOnly} other expense${preOnly>1?'s':''} that end${preOnly>1?'':'s'} before age ${H.retAge} ${preOnly>1?'are':'is'} on Retirement Preparation.` : '';
   const tt=document.getElementById('p_cmtTot');
-  if(tt)tt.innerHTML = cmts.length ? `<b>${fP(tot)}</b> before retirement` : 'None added';
+  if(tt)tt.innerHTML = cmts.length ? `<b>${fP(CT.pre)}</b> before retirement${CT.ret>0?` · <b>${fP(CT.ret)}</b> during retirement`:''}` : 'None added';
 
   /* One-line summaries, visible while a box is collapsed */
   setT('adjPreSum', `Salary ${fP(gv('salaryMonthly'))} · Expenses ${fP(living)} · `+
     ((ns||net<=0) ? 'no surplus to split'
                   : `${fmt(S.r*100,0)}% invested · ${fmt(S.o*100,0)}% one-time · ${fmt(S.k*100,0)}% deposits`)+
     (cmts.length?` · ${cmts.length} other expense${cmts.length>1?'s':''}`:''));
-  setT('adjRetSum', `${fP(own?gv('monthlyExpense'):living)}/mo today · pay ${fP(gv('cashAvailable'))} · ${gv('retirementPeriod')} yrs · ${rt(gv('netReturnPA'))}% return`);
+  setT('adjRetSum', `${fP(own?gv('monthlyExpense'):living)}/mo today · pay ${fP(gv('cashAvailable'))} · ${gv('retirementPeriod')} yrs · ${rt(gv('netReturnPA'))}% return`+
+    (retRows.length?` · ${retRows.length} other expense${retRows.length>1?'s':''}`:''));
 
   const rp=document.getElementById('preReset'); if(rp)rp.classList.toggle('show',chgPre);
   const rr=document.getElementById('retReset'); if(rr)rr.classList.toggle('show',chgRet);
@@ -4031,9 +4132,23 @@ function wizGo(n){
 }
 function wizNext(){ wizGo(wizStep+1); }
 function wizBack(){ wizGo(wizStep-1); }
+/* One expense list, shown inside whichever tab's adjust box is on screen. */
+function placeCmtBlock(idx){
+  const blk=document.getElementById('cmtBlock'); if(!blk) return;
+  if(idx==null){ const a=[...document.querySelectorAll('.rtab-panel')].findIndex(p=>p.classList.contains('active')); idx=a<0?0:a; }
+  const slot=document.getElementById(idx===1?'cmtSlotRet':'cmtPanelSlot');
+  if(idx===2) return;                       // Estate Planning has no adjust box; leave the list where it is
+  if(slot && blk.parentElement!==slot) slot.appendChild(blk);
+}
+/* "+ Add expense" from Retirement Life starts the new row at the retirement age. */
+function addCommitmentRet(){
+  const H=horizon();
+  addCommitment();
+  const rows=document.querySelectorAll('#cmtList .cmt-row'), row=rows[rows.length-1];
+  if(row && H.valid){ row.querySelector('.cmt-start').value=String(H.x); render(); }
+}
 function showResults(){
-  const blk=document.getElementById('cmtBlock'), slot=document.getElementById('cmtPanelSlot');
-  if(blk&&slot) slot.appendChild(blk);
+  placeCmtBlock();
   document.querySelectorAll('#cmtList .cmt-row.editing').forEach(r=>{r.classList.remove('editing');const e=r.querySelector('.cmt-mini-e');if(e)e.textContent='Edit';});
   render();
   snapAdjBase();
